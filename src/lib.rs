@@ -51,6 +51,12 @@ pub struct SocialGraph {
     groups: Vec<Group>,
 }
 
+impl Default for SocialGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SocialGraph {
     pub fn new() -> Self {
         SocialGraph {
@@ -92,11 +98,14 @@ impl SocialGraph {
     }
 
     pub fn find_relation(&self, from: u16, to: u16) -> Option<&Relation> {
-        self.relations.iter().find(|r| r.from_id == from && r.to_id == to)
+        self.relations
+            .iter()
+            .find(|r| r.from_id == from && r.to_id == to)
     }
 
     pub fn neighbors(&self, id: u16) -> Vec<u16> {
-        let mut ids: Vec<u16> = self.relations
+        let mut ids: Vec<u16> = self
+            .relations
             .iter()
             .filter_map(|r| {
                 if r.from_id == id {
@@ -334,5 +343,99 @@ mod tests {
     fn test_agent_default_reputation() {
         let g = make_graph();
         assert!((g.find_agent(1).unwrap().reputation - 0.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_centrality_no_relations() {
+        let mut g = SocialGraph::new();
+        g.add_agent(1, "A", AgentRole::Worker);
+        g.add_agent(2, "B", AgentRole::Worker);
+        // No relations added
+        assert!((g.centrality(1)).abs() < f64::EPSILON);
+        assert!((g.centrality(2)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_multiple_groups() {
+        let mut g = make_graph();
+        let g1 = g.create_group("Alpha", 1);
+        let g2 = g.create_group("Beta", 2);
+        assert_ne!(g1, g2);
+        g.join_group(g1, 3);
+        g.join_group(g2, 3);
+        assert_eq!(g.group_members(g1).len(), 2);
+        assert_eq!(g.group_members(g2).len(), 2);
+    }
+
+    #[test]
+    fn test_group_with_nonexistent_member() {
+        let mut g = SocialGraph::new();
+        g.add_agent(1, "Alice", AgentRole::Leader);
+        let gid = g.create_group("Team", 1);
+        g.join_group(gid, 99); // non-existent agent
+        let members = g.group_members(gid);
+        assert_eq!(members.len(), 1); // only Alice, 99 doesn't exist
+    }
+
+    #[test]
+    fn test_all_agent_roles_distinct() {
+        let roles = vec![
+            AgentRole::Worker,
+            AgentRole::Coordinator,
+            AgentRole::Specialist,
+            AgentRole::Leader,
+            AgentRole::Mentor,
+            AgentRole::Learner,
+            AgentRole::Observer,
+        ];
+        for i in 0..roles.len() {
+            for j in (i + 1)..roles.len() {
+                assert_ne!(roles[i], roles[j], "Duplicate role detected");
+            }
+        }
+    }
+
+    #[test]
+    fn test_join_nonexistent_group() {
+        let mut g = make_graph();
+        g.join_group(99, 1); // should not panic
+        assert_eq!(g.group_members(99).len(), 0);
+    }
+
+    #[test]
+    fn test_add_agent_duplicate_id() {
+        let mut g = SocialGraph::new();
+        g.add_agent(1, "Alice", AgentRole::Leader);
+        g.add_agent(1, "Alice2", AgentRole::Worker); // same id
+        assert_eq!(g.agent_count(), 2); // allows duplicates
+    }
+
+    #[test]
+    fn test_relation_all_types() {
+        let types = vec![
+            RelationType::Peer,
+            RelationType::Mentor,
+            RelationType::Student,
+            RelationType::Subordinate,
+            RelationType::Collaborator,
+            RelationType::Competitor,
+            RelationType::Stranger,
+        ];
+        let mut g = SocialGraph::new();
+        for (i, _rt) in types.iter().enumerate() {
+            g.add_agent(i as u16, &format!("Agent{}", i), AgentRole::Worker);
+        }
+        // Verify all relation types are distinct
+        for i in 0..types.len() {
+            for j in (i + 1)..types.len() {
+                assert_ne!(types[i], types[j], "Duplicate relation type");
+            }
+        }
+    }
+
+    #[test]
+    fn test_centrality_unknown_agent() {
+        let g = make_graph();
+        assert!((g.centrality(99)).abs() < f64::EPSILON);
     }
 }
